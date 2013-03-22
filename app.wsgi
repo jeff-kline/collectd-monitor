@@ -18,7 +18,7 @@ try: PAGE_TITLE = config["page-title"]
 except KeyError: PAGE_TITLE = "LDR MOnitor Page"
 
 try: IGNORE_AGE = config["ignore-age"]
-except KeyError: 600
+except KeyError: IGNORE_AGE = 600
 
 # this should be read from BaseDir in /etc/collectd/collectd.conf
 BASE_DIR = "/var/lib/collectd/rrd"
@@ -58,9 +58,11 @@ def ldrq(server_dir, server, ignore_age=IGNORE_AGE):
         s = os.stat(os.path.join(server_dir, "ldrq/ldrq.rrd"))
         if ignore_age > time.time() - s[stat.ST_MTIME]:
             return """<img src="%s" alt="ldrq for %s">""" % (img_src, server)
-        
-            return str(time.time() - s[stat.ST_MTIME])
     except OSError: pass
+
+
+def ldr_publish(server_dir, server, ignore_age=IGNORE_AGE):
+    pass
 
 
 def application(environ, start_response):
@@ -74,6 +76,7 @@ def application(environ, start_response):
             server_node = []
             server_node.append(ldrq(server_dir, server))
             server_node.append(ldr_publish(server_dir, server))
+            server_node = map(str, [s or '' for s in server_node])
             
             # only add nodes if server_node is not null
             if any(server_node):
@@ -85,7 +88,7 @@ def application(environ, start_response):
         ret.append(html_end())
         response_headers = [('Content-type', 'text/html')]
         start_response(CODE_OK, response_headers)
-        return ret
+        return ''.join(ret)
     except Exception as e:
         response_headers = [('Content-type', 'text/plain')]
         start_response(CODE_ERROR, response_headers)
