@@ -8,9 +8,9 @@ goal.
 Install
 -------
 Create ``/etc/ldr_monitor.json`` with a single object with key
-``base-url``. This typicaly is a url that ends with
-``graph.cgi``. Optional fields include ``page-title`` (LDR Monitor
-Page), ``ignore-age`` (600).
+``base-url``. This should be a url so that ``${base-url}/index.cgi``
+and ``${base-url}/graph.cgi`` make sense.  Optional fields include
+``page-title`` (LDR Monitor Page), ``ignore-age`` (600).
 
 Copy ``app.wsgi`` to ``/usr/lib/cgi-bin/collectd-monitor``.
 

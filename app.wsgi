@@ -47,14 +47,16 @@ def w3c_pride():
 
 
 def html_end():
-    return "</body></html>"
+    return str("""
+<a href="%s/index.cgi">The raw data</a>
+</body></html>""" % BASE_URL)
 
 
 def ldrq(server_dir, server, ignore_age=IGNORE_AGE):
     """Attempt to return html node of ldrq if ldrq rrd file is younger
     than ignore_age"""
     try:
-        img_src = "%s?hostname=%s;plugin=ldrq;type=ldrq;begin=-86400" % (BASE_URL, server)
+        img_src = "%s/graph.cgi?hostname=%s;plugin=ldrq;type=ldrq;begin=-86400" % (BASE_URL, server)
         s = os.stat(os.path.join(server_dir, "ldrq/ldrq.rrd"))
         if ignore_age > time.time() - s[stat.ST_MTIME]:
             return """<img src="%s" alt="ldrq for %s">""" % (img_src, server)
