@@ -15,7 +15,7 @@ with open("/etc/ldr_monitor.json") as fh:
 BASE_URL = config["base-url"]
 
 try: PAGE_TITLE = config["page-title"]
-except KeyError: PAGE_TITLE = "LDR MOnitor Page"
+except KeyError: PAGE_TITLE = "LDR Monitor Page"
 
 try: IGNORE_AGE = config["ignore-age"]
 except KeyError: IGNORE_AGE = 600
