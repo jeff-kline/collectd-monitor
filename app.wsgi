@@ -275,7 +275,7 @@ def application(environ, start_response):
 
 
         # now transpose the columns
-        table_html=["<table>"]
+        table_html=['<table style="width:100%">']
         for j in range(len(table_cells[0])):
                 table_html.append("<tr>")
                 for col in table_cells:
