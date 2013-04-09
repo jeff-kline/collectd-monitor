@@ -253,6 +253,7 @@ def application(environ, start_response):
 
         ret = [html_start()]
 
+
         # build a table, first store columns
         table_cells = []
         for server, server_dir in SERVER_d.iteritems():
@@ -271,6 +272,7 @@ def application(environ, start_response):
                 cells.extend([s or "<td></td>" for s in server_node])
                 cells.append(server_node_end)
                 table_cells.append(cells)
+
 
         # now transpose the columns
         table_html=["<table>"]
