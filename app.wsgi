@@ -39,6 +39,7 @@ def html_start():
 <html>
   <head>
   <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
+  <meta http-equiv="refresh" content="120; url=collectd-monitor">
   <title>%s</title>
   </head>
 <body>""" % PAGE_TITLE
@@ -161,26 +162,39 @@ def ldrq_graph(environ, start_response):
         start_response(CODE_OK, response_headers)
         return [fh.read()]
 
+def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1):
+    rrdtool_args = [ '--imgformat', 'PNG', '--title', title,
+                     '--start', start, '--end', end, '--vertical-label', vertical_label,]
+    if logarithmic:
+        rrdtool_args.append('--logarithmic')
+
+    with tempfile.NamedTemporaryFile() as fh:
+        for c, f, n in color_file_name_l:
+            rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
+            rrdtool_args.append('CDEF:%s=%s0,%d,*' % (n, n, scale)) # FIXME
+            rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), n[-25:]))
+            rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%8.2lf' % (n))
+            rrdtool_args.append('GPRINT:%s:MAX:max\: %%5.0lf' % (n))
+            rrdtool_args.append('GPRINT:%s:LAST:last\: %%5.0lf\\n' % (n))
+        rrdtool.graph(fh.name, *rrdtool_args)
+        return fh.read()
+
 def rate_graph(environ, start_response):
     publish_graph_d = urlparse.parse_qs(environ["QUERY_STRING"])
     hostname=publish_graph_d["hostname"][0]
     try: start=publish_graph_d["start"][0]
     except: start = '-86400'
+    end = '-1'
 
     recent = _get_recent_rate(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
 
-    with tempfile.NamedTemporaryFile() as fh:
-        rrdtool_args = [ '--imgformat', 'PNG', '--title', 'Transfer rate', 
-                         '--start', start, '--end', '-1', '--vertical-label', "MB/s"]
-        for c, f, n in zip(colorwheel(len(recent)), recent, name_l):
-            rrdtool_args.append('DEF:%s0=%s:MBps:AVERAGE' % (n, f))
-            rrdtool_args.append('CDEF:%s=%s0,1,*' % (n, n)) # FIXME
-            rrdtool_args.append('LINE:%s#%s:%s' % (n,''.join(c), n))
-        rrdtool.graph(fh.name, *rrdtool_args)
-        response_headers = [('Content-type', 'image/png')]
-        start_response(CODE_OK, response_headers)
-        return [fh.read()]
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "MB/s", "Transfer rate", "MBps")
+    response_headers = [('Content-type', 'image/png')]
+
+    start_response(CODE_OK, response_headers)
+    return [img]
+
 
 
 def todo_graph(environ, start_response):
@@ -188,50 +202,33 @@ def todo_graph(environ, start_response):
     hostname=publish_graph_d["hostname"][0]
     try: start=publish_graph_d["start"][0]
     except: start = '-86400'
+    end = '-1'
 
     recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "count", "TODO", "avail_m_moved", logarithmic=True)
+    response_headers = [('Content-type', 'image/png')]
 
-    with tempfile.NamedTemporaryFile() as fh:
-        rrdtool_args = [ '--imgformat', 'PNG', '--title', 'TODO', 
-                         '--start', start, '--end', '-1', '--vertical-label', "count",
-                         '--logarithmic']
-        for c, f, n in zip(colorwheel(len(recent)), recent, name_l):
-            rrdtool_args.append('DEF:%s0=%s:avail_m_moved:AVERAGE' % (n, f))
-            rrdtool_args.append('CDEF:%s=%s0,1,*' % (n, n)) # FIXME
-            rrdtool_args.append('LINE:%s#%s:%s' % (n,''.join(c), n))
-        rrdtool.graph(fh.name, *rrdtool_args)
-        response_headers = [('Content-type', 'image/png')]
-        start_response(CODE_OK, response_headers)
-        return [fh.read()]
+    start_response(CODE_OK, response_headers)
+    return [img]
 
 def publish_graph(environ, start_response):
     publish_graph_d = urlparse.parse_qs(environ["QUERY_STRING"])
     hostname=publish_graph_d["hostname"][0]
     try: start=publish_graph_d["start"][0]
     except: start = '-86400'
+    end = '-1'
+
 
     recent = _get_recent_publish(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
 
-    with tempfile.NamedTemporaryFile() as fh:
-        rrdtool_args = [ '--imgformat', 'PNG', '--title', 'Publish rate', 
-                         '--start', start, '--end', '-1', '--vertical-label', "pub/min",
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "pub/min", "Publish rate", "pub_per_sec", scale=60)
+    response_headers = [('Content-type', 'image/png')]
 
-                        ]
-        for c, f, n in zip(colorwheel(len(recent)), recent, name_l):
-            rrdtool_args.append('DEF:%s0=%s:pub_per_sec:AVERAGE' % (n, f))
-            rrdtool_args.append('CDEF:%s=%s0,60,*' % (n, n))
-            rrdtool_args.append('LINE:%s#%s:%27s' % (n,''.join(c), n[-27:]))
-            rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%6.2lf' % (n))
-            rrdtool_args.append('GPRINT:%s:MAX:max\: %%4.0lf' % (n))
-            rrdtool_args.append('GPRINT:%s:LAST:last\: %%6.2lf\\n' % (n))
+    start_response(CODE_OK, response_headers)
+    return [img]
 
-
-        rrdtool.graph(fh.name, *rrdtool_args)
-        response_headers = [('Content-type', 'image/png')]
-        start_response(CODE_OK, response_headers)
-        return [fh.read()]
 
 def application(environ, start_response):
     """Derived from the simplest possible application object"""
