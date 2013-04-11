@@ -67,6 +67,7 @@ def _get_recent(server_dir, file_l, start):
     for f, s in zip(file_l, all_files_stat):
         if start > time.time() - s[stat.ST_MTIME]:
             ret.append(f)
+    ret.sort()
     return ret
 
 def _get_recent_ldrq(server_dir, start=DEFAULT_START):
