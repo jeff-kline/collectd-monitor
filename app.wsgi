@@ -22,8 +22,11 @@ BASE_URL = config["base-url"]
 try: PAGE_TITLE = config["page-title"]
 except KeyError: PAGE_TITLE = "LDR Monitor Page"
 
-try: DEFAULT_START = config["ignore-age"]
-except KeyError: DEFAULT_START = 600
+try: DEFAULT_START = config["default-start"]
+except KeyError: DEFAULT_START = -86400
+
+try: DEFAULT_END = config["default-end"]
+except KeyError: DEFAULT_END = -1
 
 # this should be read from BaseDir in /etc/collectd/collectd.conf
 BASE_DIR = "/var/lib/collectd/rrd"
@@ -93,32 +96,32 @@ def _get_recent_ldrq(server_dir, start=DEFAULT_START):
 def img(img_src, alt):
     return """<td><img src="%s" alt="%s" style="width:100%%" ></td>""" % (img_src, alt)
 
-def ldrq(server_dir, server, start=DEFAULT_START):
+def ldrq(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
-        img_src = "ldrq_graph?hostname=%s;start=-%d" % (server, start)
-        if _get_recent_ldrq(server_dir, start):
+        img_src = "ldrq_graph?hostname=%s;start=%d;end=%d" % (server, start, end)
+        if _get_recent_ldrq(server_dir, abs(start)):
             return img(img_src, "ldr queue for %s" % server)
     except OSError: pass
 
-def ldr_publish(server_dir, server, start=DEFAULT_START):
+def ldr_publish(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
-        img_src = "publish_graph?hostname=%s;start=-%d"  % (server, start)
-        if _get_recent_publish(server_dir, start):
+        img_src = "publish_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
+        if _get_recent_publish(server_dir, abs(start)):
             return img(img_src, "publish rate for %s" % server)
     except OSError: pass
 
 
-def ldr_rate(server_dir, server, start=DEFAULT_START):
+def ldr_rate(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
-        img_src = "rate_graph?hostname=%s;start=-%d"  % (server, start)
-        if _get_recent_rate(server_dir, start):
+       img_src = "rate_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
+       if _get_recent_rate(server_dir, abs(start)):
             return img(img_src, "transfer rate for %s" % server)
     except OSError: pass
 
-def ldr_todo(server_dir, server, start=DEFAULT_START):
+def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
-        img_src = "todo_graph?hostname=%s;start=-%d"  % (server, start)
-        if _get_recent_todo(server_dir, start):
+        img_src = "todo_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
+        if _get_recent_todo(server_dir, abs(start)):
             return img(img_src, "transfer todo for %s" % server)
     except OSError: pass
 
@@ -136,6 +139,8 @@ def ldrq_graph(environ, start_response):
     hostname=qs_d["hostname"][0]
     try: start=qs_d["start"][0]
     except: start = '-86400'
+    try: end=qs_d["end"][0]
+    except: end = '-1'
 
     recent = _get_recent_ldrq(SERVER_d[hostname], start=abs(int(start))).pop()
     name = os.path.basename(recent).split('-')[-1].split('.')[0]
@@ -147,9 +152,10 @@ def ldrq_graph(environ, start_response):
            ["transfer_fail", "EEDD00", "xfer fail"],
            ["publish_fail", "00DDCC",  "pub fail "],
        ]
+
     with tempfile.NamedTemporaryFile() as fh:
         rrdtool_args = [ '--imgformat', 'PNG', '--title', 'queue', 
-                         '--start', start, '--end', '-1', '--vertical-label', "count",
+                         '--start', start, '--end', end, '--vertical-label', "count",
                          '--logarithmic']
         for key, color, label in kcl:
             rrdtool_args.append('DEF:%s=%s:%s:AVERAGE' % (key, recent, key) )
@@ -181,11 +187,12 @@ def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarit
         return fh.read()
 
 def rate_graph(environ, start_response):
-    publish_graph_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=publish_graph_d["hostname"][0]
-    try: start=publish_graph_d["start"][0]
+    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
+    hostname=qs_d["hostname"][0]
+    try: start=qs_d["start"][0]
     except: start = '-86400'
-    end = '-1'
+    try: end=qs_d["end"][0]
+    except: end = '-1'
 
     recent = _get_recent_rate(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
@@ -199,11 +206,12 @@ def rate_graph(environ, start_response):
 
 
 def todo_graph(environ, start_response):
-    publish_graph_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=publish_graph_d["hostname"][0]
-    try: start=publish_graph_d["start"][0]
+    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
+    hostname=qs_d["hostname"][0]
+    try: start=qs_d["start"][0]
     except: start = '-86400'
-    end = '-1'
+    try: end=qs_d["end"][0]
+    except: end = '-1'
 
     recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
@@ -214,12 +222,12 @@ def todo_graph(environ, start_response):
     return [img]
 
 def publish_graph(environ, start_response):
-    publish_graph_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=publish_graph_d["hostname"][0]
-    try: start=publish_graph_d["start"][0]
+    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
+    hostname=qs_d["hostname"][0]
+    try: start=qs_d["start"][0]
     except: start = '-86400'
-    end = '-1'
-
+    try: end=qs_d["end"][0]
+    except: end = '-1'
 
     recent = _get_recent_publish(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
@@ -246,8 +254,10 @@ def application(environ, start_response):
 	    return ldrq_graph(environ, start_response)
 
         qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-        try: start=abs(int(qs_d["start"][0]))
-        except: start = 86400
+        try: start=int(qs_d["start"][0])
+        except: start = -86400
+        try: end=int(qs_d["end"][0])
+        except: end = -1
 
         ret = [html_start()]
 
@@ -258,10 +268,10 @@ def application(environ, start_response):
             server_node_start = """<th style="width:25%%">%s</td>""" % server
             server_node_end = ""
             server_node = []
-            server_node.append(ldrq(server_dir, server, start=start))
-            server_node.append(ldr_publish(server_dir, server, start=start))
-            server_node.append(ldr_rate(server_dir, server, start=start))
-            server_node.append(ldr_todo(server_dir, server, start=start))
+            server_node.append(ldrq(server_dir, server, start=start, end=end))
+            server_node.append(ldr_publish(server_dir, server, start=start, end=end))
+            server_node.append(ldr_rate(server_dir, server, start=start, end=end))
+            server_node.append(ldr_todo(server_dir, server, start=start, end=end))
             
             # only add nodes if server_node is not null
             if any(server_node):
