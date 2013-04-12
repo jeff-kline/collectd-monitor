@@ -89,6 +89,10 @@ def _get_recent_todo(server_dir, start=DEFAULT_START):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/*_transfer*.rrd")), start)
 
+def _get_recent_lagxfer(server_dir, start=DEFAULT_START):
+    return _get_recent(server_dir, 
+	glob.glob(os.path.join(server_dir, "ldrq/*_lagxfer*.rrd")), start)
+
 def _get_recent_ldrq(server_dir, start=DEFAULT_START):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
@@ -123,6 +127,13 @@ def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
         img_src = "todo_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
         if _get_recent_todo(server_dir, abs(start)):
             return img(img_src, "transfer todo for %s" % server)
+    except OSError: pass
+
+def ldr_lagxfer(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+    try:
+        img_src = "lagxfer_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
+        if _get_recent_lagxfer(server_dir, abs(start)):
+            return img(img_src, "transfer lag for %s" % server)
     except OSError: pass
 
 
@@ -178,7 +189,7 @@ def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarit
     with tempfile.NamedTemporaryFile() as fh:
         for c, f, n in color_file_name_l:
             rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
-            rrdtool_args.append('CDEF:%s=%s0,%d,*' % (n, n, scale)) # FIXME
+            rrdtool_args.append('CDEF:%s=%s0,%f,*' % (n, n, scale)) # FIXME
             rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), n[-25:]))
             rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%8.2lf' % (n))
             rrdtool_args.append('GPRINT:%s:MAX:max\: %%5.0lf' % (n))
@@ -221,6 +232,23 @@ def todo_graph(environ, start_response):
     start_response(CODE_OK, response_headers)
     return [img]
 
+
+def lagxfer_graph(environ, start_response):
+    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
+    hostname=qs_d["hostname"][0]
+    try: start=qs_d["start"][0]
+    except: start = '-86400'
+    try: end=qs_d["end"][0]
+    except: end = '-1'
+
+    recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
+    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Lag", "lag", logarithmic=True, scale=1./3600.)
+    response_headers = [('Content-type', 'image/png')]
+
+    start_response(CODE_OK, response_headers)
+    return [img]
+
 def publish_graph(environ, start_response):
     qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
     hostname=qs_d["hostname"][0]
@@ -252,6 +280,8 @@ def application(environ, start_response):
 	    return todo_graph(environ, start_response)
         elif "ldrq_graph" in environ["REQUEST_URI"]:
 	    return ldrq_graph(environ, start_response)
+        elif "lagxfer_graph" in environ["REQUEST_URI"]:
+	    return lagxfer_graph(environ, start_response)
 
         qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
         try: start=int(qs_d["start"][0])
@@ -268,10 +298,12 @@ def application(environ, start_response):
             server_node_start = """<th style="width:25%%">%s</td>""" % server
             server_node_end = ""
             server_node = []
+            server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end))
             server_node.append(ldrq(server_dir, server, start=start, end=end))
             server_node.append(ldr_publish(server_dir, server, start=start, end=end))
             server_node.append(ldr_rate(server_dir, server, start=start, end=end))
             server_node.append(ldr_todo(server_dir, server, start=start, end=end))
+
             
             # only add nodes if server_node is not null
             if any(server_node):
