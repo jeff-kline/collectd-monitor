@@ -4,6 +4,7 @@ import colorsys
 import json
 import glob
 import os
+import re
 import rrdtool
 import stat
 import tempfile
@@ -42,13 +43,24 @@ def html_start():
 <html>
   <head>
   <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
-  <meta http-equiv="refresh" content="120; url=collectd-monitor">
   <title>%s</title>
   </head>
 <body>""" % PAGE_TITLE
 
 def js_start():
-    return """<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>"""
+    return """<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+    <script>
+    // refresh each rrdtool image every 10s
+    // append ts=${timestamp} to each image url
+    $(document).ready(function() {
+      setInterval(function() {
+        $(".rrdtool").each(function() {
+          $(this).attr("src",$(this).attr("src").replace(/ts=.*/, "ts="+new Date().getTime()));
+          });
+      }, 10000);
+    });
+    </script>
+    """
 
 def w3c_pride():
     return """
@@ -98,7 +110,7 @@ def _get_recent_ldrq(server_dir, start=DEFAULT_START):
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
 
 def img(img_src, alt):
-    return """<td><img src="%s" alt="%s" style="width:100%%" ></td>""" % (img_src, alt)
+    return """<td><img src="%s;ts=0" alt="%s" class="rrdtool" style="width:100%%" ></td>""" % (img_src, alt)
 
 def ldrq(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
@@ -146,13 +158,7 @@ def colorwheel(n):
     return [hls_to_hex((float(x)/n, 0.5, 0.625)) for x in range(n)]
 
 def ldrq_graph(environ, start_response):
-    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=qs_d["hostname"][0]
-    try: start=qs_d["start"][0]
-    except: start = '-86400'
-    try: end=qs_d["end"][0]
-    except: end = '-1'
-
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_ldrq(SERVER_d[hostname], start=abs(int(start))).pop()
     name = os.path.basename(recent).split('-')[-1].split('.')[0]
 
@@ -189,7 +195,7 @@ def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarit
     with tempfile.NamedTemporaryFile() as fh:
         for c, f, n in color_file_name_l:
             rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
-            rrdtool_args.append('CDEF:%s=%s0,%f,*%s' % (n, n, scale, op)) # FIXME
+            rrdtool_args.append('CDEF:%s=%s0,%f,*%s' % (n, n, scale, op))
             rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), n[-25:]))
             rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%8.2lf' % (n))
             rrdtool_args.append('GPRINT:%s:MAX:max\: %%5.0lf' % (n))
@@ -197,50 +203,38 @@ def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarit
         rrdtool.graph(fh.name, *rrdtool_args)
         return fh.read()
 
-def rate_graph(environ, start_response):
-    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=qs_d["hostname"][0]
+def _parse_qs(qs):
+    qs_d = urlparse.parse_qs(qs)
+    try: hostname=qs_d["hostname"][0]
+    except: hostname = None
     try: start=qs_d["start"][0]
     except: start = '-86400'
     try: end=qs_d["end"][0]
     except: end = '-1'
+    return hostname, start, end
 
+def rate_graph(environ, start_response):
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_rate(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-
     img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "MB/s", "Transfer rate", "MBps")
     response_headers = [('Content-type', 'image/png')]
-
     start_response(CODE_OK, response_headers)
     return [img]
 
 
-
 def todo_graph(environ, start_response):
-    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=qs_d["hostname"][0]
-    try: start=qs_d["start"][0]
-    except: start = '-86400'
-    try: end=qs_d["end"][0]
-    except: end = '-1'
-
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
     img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "count", "TODO", "avail_m_moved", logarithmic=True)
     response_headers = [('Content-type', 'image/png')]
-
     start_response(CODE_OK, response_headers)
     return [img]
 
 
 def lagxfer_graph(environ, start_response):
-    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=qs_d["hostname"][0]
-    try: start=qs_d["start"][0]
-    except: start = '-86400'
-    try: end=qs_d["end"][0]
-    except: end = '-1'
-
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
     img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
@@ -250,16 +244,9 @@ def lagxfer_graph(environ, start_response):
     return [img]
 
 def publish_graph(environ, start_response):
-    qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-    hostname=qs_d["hostname"][0]
-    try: start=qs_d["start"][0]
-    except: start = '-86400'
-    try: end=qs_d["end"][0]
-    except: end = '-1'
-
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_publish(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-
     img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "pub/min", "Publish rate", "pub_per_sec", scale=60)
     response_headers = [('Content-type', 'image/png')]
 
@@ -271,7 +258,7 @@ def application(environ, start_response):
     """Derived from the simplest possible application object"""
 
     try:
-	# dispatch the special cases if necessary
+	# dispatch the special cases
         if "publish_graph" in environ["REQUEST_URI"]:
 	    return publish_graph(environ, start_response)
         elif "rate_graph" in environ["REQUEST_URI"]:
@@ -284,18 +271,17 @@ def application(environ, start_response):
 	    return lagxfer_graph(environ, start_response)
 
         qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-        try: start=int(qs_d["start"][0])
-        except: start = -86400
-        try: end=int(qs_d["end"][0])
-        except: end = -1
+        hostname, start, end = _parse_qs(environ["QUERY_STRING"])
+        start, end =int(start), int(end)
 
-        ret = [html_start()]
-
+        ret = [html_start(), js_start()]
 
         # build a table, first store columns
         table_cells = []
         for server, server_dir in SERVER_d.iteritems():
-            server_node_start = """<th style="width:25%%">%s</td>""" % server
+            if hostname is not None and not re.search(hostname, server):
+                continue
+            server_node_start = """<th style="width:400px">%s</td>""" % server
             server_node_end = ""
             server_node = []
             server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end))
@@ -304,7 +290,6 @@ def application(environ, start_response):
             server_node.append(ldr_rate(server_dir, server, start=start, end=end))
             server_node.append(ldr_todo(server_dir, server, start=start, end=end))
 
-            
             # only add nodes if server_node is not null
             if any(server_node):
                 cells = [server_node_start]
@@ -313,9 +298,8 @@ def application(environ, start_response):
                 cells.append(server_node_end)
                 table_cells.append(cells)
 
-
         # now transpose the columns
-        table_html=['<table style="width:100%">']
+        table_html=['<table>']
         for j in range(len(table_cells[0])):
                 table_html.append("<tr>")
                 for col in table_cells:
