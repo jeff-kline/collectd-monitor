@@ -180,7 +180,7 @@ def ldrq_graph(environ, start_response):
         start_response(CODE_OK, response_headers)
         return [fh.read()]
 
-def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1):
+def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1, op=""):
     rrdtool_args = [ '--imgformat', 'PNG', '--title', title,
                      '--start', start, '--end', end, '--vertical-label', vertical_label,]
     if logarithmic:
@@ -189,7 +189,7 @@ def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarit
     with tempfile.NamedTemporaryFile() as fh:
         for c, f, n in color_file_name_l:
             rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
-            rrdtool_args.append('CDEF:%s=%s0,%f,*' % (n, n, scale)) # FIXME
+            rrdtool_args.append('CDEF:%s=%s0,%f,*%s' % (n, n, scale, op)) # FIXME
             rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), n[-25:]))
             rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%8.2lf' % (n))
             rrdtool_args.append('GPRINT:%s:MAX:max\: %%5.0lf' % (n))
@@ -243,7 +243,7 @@ def lagxfer_graph(environ, start_response):
 
     recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Lag", "lag", logarithmic=True, scale=1./3600.)
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
 
     start_response(CODE_OK, response_headers)
