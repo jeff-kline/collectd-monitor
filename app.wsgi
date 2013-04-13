@@ -37,7 +37,7 @@ SERVER_l = map(os.path.basename, SERVER_DIR_l)
 SERVER_d = dict(zip(SERVER_l, SERVER_DIR_l))
 
 def html_start():
-    return """
+    return str("""
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
    "http://www.w3.org/TR/html4/strict.dtd">
 <html>
@@ -45,19 +45,23 @@ def html_start():
   <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
   <title>%s</title>
   </head>
-<body>""" % PAGE_TITLE
+<body>
+<p>
+<a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a>, <a href="%s/index.cgi">The raw data</a>, 
+Valid query params: hostname (regexp), start (negative int), end (negative int)</p>
+    """ % (PAGE_TITLE, BASE_URL))
 
 def js_start():
-    return """<script src="//ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-    <script>
-    // refresh each rrdtool image every 10s
+    return """<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js" type="text/javascript"></script>
+    <script type="text/javascript">
+    // refresh each rrdtool image every 100s
     // append ts=${timestamp} to each image url
     $(document).ready(function() {
       setInterval(function() {
         $(".rrdtool").each(function() {
           $(this).attr("src",$(this).attr("src").replace(/ts=.*/, "ts="+new Date().getTime()));
           });
-      }, 10000);
+      }, 100000);
     });
     </script>
     """
@@ -70,10 +74,7 @@ def w3c_pride():
   </p>"""
 
 def html_end():
-    return str("""<p>
-<a href="%s/index.cgi">The raw data</a>
-Append "?start=-S" for integer number of seconds S to the URL to adjust the start time of the plots.</p>
-</body></html>""" % BASE_URL)
+    return str("""</body></html>""")
 
 
 def _get_recent(server_dir, file_l, start):
@@ -281,8 +282,7 @@ def application(environ, start_response):
         for server, server_dir in SERVER_d.iteritems():
             if hostname is not None and not re.search(hostname, server):
                 continue
-            server_node_start = """<th style="width:400px">%s</td>""" % server
-            server_node_end = ""
+            server_node_start = """<th style="width:400px"><a href="?hostname=%s">%s</a></th>""" % (server, server)
             server_node = []
             server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end))
             server_node.append(ldrq(server_dir, server, start=start, end=end))
@@ -295,7 +295,6 @@ def application(environ, start_response):
                 cells = [server_node_start]
                 # convert None to empty cells
                 cells.extend([s or "<td></td>" for s in server_node])
-                cells.append(server_node_end)
                 table_cells.append(cells)
 
         # now transpose the columns
