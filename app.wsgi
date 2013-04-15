@@ -37,7 +37,7 @@ SERVER_l = map(os.path.basename, SERVER_DIR_l)
 SERVER_d = dict(zip(SERVER_l, SERVER_DIR_l))
 
 def html_start():
-    return str("""
+    return """
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
    "http://www.w3.org/TR/html4/strict.dtd">
 <html>
@@ -46,25 +46,127 @@ def html_start():
   <title>%s</title>
   </head>
 <body>
-<p>
-<a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a>, <a href="%s/index.cgi">The raw data</a>, 
-Valid query params: hostname (regexp), start (negative int), end (negative int)</p>
-    """ % (PAGE_TITLE, BASE_URL))
+""" % PAGE_TITLE
 
-def js_start():
+def page_header():
+    return """<div><a href="" id="back">back</a> | <a href="" id="forward">forward</a> | <a href="" id="zoom_out">zoom out</a> | <a href="" id="zoom_in">zoom in</a> | <a href="" id="reset">reset</a> | 
+<span id="t_range"></span>
+</div>
+<div>
+<a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a> | <a href="%s/index.cgi">The raw data</a>
+</div>""" % BASE_URL
+
+def js_start(start, end):
     return """<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js" type="text/javascript"></script>
     <script type="text/javascript">
-    // refresh each rrdtool image every 100s
-    // append ts=${timestamp} to each image url
+
+    // Simple function to calculate time difference between 2 Javascript date objects
+    function get_time_difference(earlierDate,laterDate)
+    {
+           var nTotalDiff = laterDate.getTime() - earlierDate.getTime();
+           var oDiff = new Object();
+     
+           oDiff.days = Math.floor(nTotalDiff/1000/60/60/24);
+           nTotalDiff -= oDiff.days*1000*60*60*24;
+     
+           oDiff.hours = Math.floor(nTotalDiff/1000/60/60);
+           nTotalDiff -= oDiff.hours*1000*60*60;
+     
+           oDiff.minutes = Math.floor(nTotalDiff/1000/60);
+           nTotalDiff -= oDiff.minutes*1000*60;
+     
+           oDiff.seconds = Math.floor(nTotalDiff/1000);
+     
+           return oDiff;
+    }
+
     $(document).ready(function() {
-      setInterval(function() {
-        $(".rrdtool").each(function() {
-          $(this).attr("src",$(this).attr("src").replace(/ts=.*/, "ts="+new Date().getTime()));
+        // global variables
+        var start=%d, end=%d, rrdtool_interval_handle;
+        set_t_range_interval(start, end);
+
+        function get_sane_range(start, end, denom) {
+            var _denom = denom || 2;
+            return Math.max(Math.floor((end - start)/_denom), 1);
+        }
+
+        function set_t_range_interval(start, end) {
+          // refresh each rrdtool image every 100s
+          if (rrdtool_interval_handle) {
+            clearInterval(rrdtool_interval_handle);
+          } 
+          set_t_range(start, end);
+          rrdtool_interval_handle = setInterval(function() {
+                set_t_range(start, end);
+            }, 100000);
+        };
+
+        // nav buttons operate on global variables start, end, 
+        // rrdtool_interval_handle 
+        $("#reset").click(function() {
+            // these are set by the server-side script
+            start = %d;
+            end = %d;
+            set_t_range_interval(start, end);
+            return false;
+        });
+
+        $("#back").click(function() {
+            var t_range = get_sane_range(start, end);
+            start -= t_range;
+            end -= t_range;
+            set_t_range_interval(start, end);
+            return false;
+        });
+
+        $("#forward").click(function() {
+            // forward will move to the last sane value.
+            var t_range = get_sane_range(start, end);
+            start += t_range;
+            end += t_range;
+            if( end > -1) {
+              start = - t_range * 2; 
+              end = -1;
+            }
+            set_t_range_interval(start, end);
+            return false;
+        });
+
+        $("#zoom_out").click(function() {
+            var t_range = get_sane_range(start, end);
+            start -= t_range;
+            end = Math.min(end + t_range, -1);
+            set_t_range_interval(start, end);
+            return false;
+        });
+
+        $("#zoom_in").click(function() {
+            var t_range = get_sane_range(start, end, 4);
+            start += t_range;
+            end -= t_range;
+            set_t_range_interval(start, end);
+            return false;
+        });
+
+        function set_t_range(start, end) {
+          var cur_d = new Date();
+          // start and end are relative to now, negative numbers
+          var start_d = new Date(cur_d - Math.abs(start * 1000));
+          var end_d = new Date(cur_d - Math.abs(end * 1000));
+          var td_obj = get_time_difference(start_d, end_d);
+          var td_str = td_obj.days + "days " + td_obj.hours + "h " + td_obj.minutes + "m ";
+          $("#t_range").html(td_str + "(starting " + start_d.toString() + ")");
+          $(".rrdtool").each(function() {
+            var new_src = $(this).attr("src") + ""
+            new_src = new_src.replace(/start=-\d+/, "start=" + start);
+            new_src = new_src.replace(/end=-\d+/, "end=" + end);
+            new_src = new_src.replace(/;__cachebuster__=\d+/,"");
+            $(this).attr("src", new_src + ";__cachebuster__=" + new Date().getTime());
           });
-      }, 100000);
+        };
     });
     </script>
-    """
+    """ % (start, end, start, end)
 
 def w3c_pride():
     return """
@@ -74,7 +176,7 @@ def w3c_pride():
   </p>"""
 
 def html_end():
-    return str("""</body></html>""")
+    return """</body></html>"""
 
 
 def _get_recent(server_dir, file_l, start):
@@ -115,7 +217,7 @@ def _get_recent_ldrq(server_dir, start=DEFAULT_START):
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
 
 def img(img_src, alt):
-    return """<td><img src="%s;ts=0" alt="%s" class="rrdtool" style="width:100%%" ></td>""" % (img_src, alt)
+    return """<td><img src="%s" alt="%s" class="rrdtool" style="width:100%%" ></td>""" % (img_src, alt)
 
 def ldrq(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
@@ -300,7 +402,7 @@ def application(environ, start_response):
         hostname, start, end = _parse_qs(environ["QUERY_STRING"])
         start, end =int(start), int(end)
 
-        ret = [html_start(), js_start()]
+        ret = [html_start(), js_start(start, end), page_header()]
 
         # build a table, first store columns
         table_cells = []
@@ -337,7 +439,7 @@ def application(environ, start_response):
         ret.append(html_end())
         response_headers = [('Content-type', 'text/html')]
         start_response(CODE_OK, response_headers)
-        return ret
+        return [str(r) for r in ret]
     except Exception as e:
         response_headers = [('Content-type', 'text/plain')]
         start_response(CODE_ERROR, response_headers)
