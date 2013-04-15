@@ -49,12 +49,38 @@ def html_start():
 """ % PAGE_TITLE
 
 def page_header():
-    return """<div><a href="" id="back">back</a> | <a href="" id="forward">forward</a> | <a href="" id="zoom_out">zoom out</a> | <a href="" id="zoom_in">zoom in</a> | <a href="" id="reset">reset</a> | 
-<span id="t_range"></span>
+    return """<div id="header">
+  <p><a href="" id="back">back</a> | <a href="" id="forward">forward</a> | <a href="" id="zoom_out">zoom out</a> | <a href="" id="zoom_in">zoom in</a> | <a href="" id="reset">reset</a> | <span id="t_range"></span>
+</p>
+<p><a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a> | <a href="%s/index.cgi">The raw data</a>
+</p>
 </div>
-<div>
-<a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a> | <a href="%s/index.cgi">The raw data</a>
-</div>""" % BASE_URL
+""" % BASE_URL
+
+def css_start():
+    return """
+    <style media="screen" type="text/css">
+    #header {
+    position: relative;
+    width: 96%;
+    border-width: 1px;
+    border-color: #000000;
+    border-style: solid;
+    background-color: #ffffff;
+    padding:0.25em;
+    }
+    
+    #header p:first-of-type {
+    display: inline;
+    }
+
+    #header p:last-of-type {
+    position: absolute;
+    top: -0.75em;
+    right: 2em;
+    }
+
+    </style>"""
 
 def js_start(start, end):
     return """<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js" type="text/javascript"></script>
@@ -402,7 +428,7 @@ def application(environ, start_response):
         hostname, start, end = _parse_qs(environ["QUERY_STRING"])
         start, end =int(start), int(end)
 
-        ret = [html_start(), js_start(start, end), page_header()]
+        ret = [html_start(), css_start(), js_start(start, end), page_header()]
 
         # build a table, first store columns
         table_cells = []
