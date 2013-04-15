@@ -106,6 +106,10 @@ def _get_recent_lagxfer(server_dir, start=DEFAULT_START):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/*_lagxfer*.rrd")), start)
 
+def _get_recent_lagpub(server_dir, start=DEFAULT_START):
+    return _get_recent(server_dir, 
+	glob.glob(os.path.join(server_dir, "ldrq/*_lagpub*.rrd")), start)
+
 def _get_recent_ldrq(server_dir, start=DEFAULT_START):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
@@ -141,6 +145,14 @@ def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
         if _get_recent_todo(server_dir, abs(start)):
             return img(img_src, "transfer todo for %s" % server)
     except OSError: pass
+
+def ldr_lagpub(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+    try:
+        img_src = "lagpub_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
+        if _get_recent_lagxfer(server_dir, abs(start)):
+            return img(img_src, "publish lag for %s" % server)
+    except OSError: pass
+
 
 def ldr_lagxfer(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
@@ -234,11 +246,21 @@ def todo_graph(environ, start_response):
     return [img]
 
 
+def lagpub_graph(environ, start_response):
+    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
+    recent = _get_recent_lagpub(SERVER_d[hostname], start=abs(int(start)))
+    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Publish Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
+    response_headers = [('Content-type', 'image/png')]
+
+    start_response(CODE_OK, response_headers)
+    return [img]
+
 def lagxfer_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Transfer Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
 
     start_response(CODE_OK, response_headers)
@@ -270,6 +292,9 @@ def application(environ, start_response):
 	    return ldrq_graph(environ, start_response)
         elif "lagxfer_graph" in environ["REQUEST_URI"]:
 	    return lagxfer_graph(environ, start_response)
+        elif "lagpub_graph" in environ["REQUEST_URI"]:
+	    return lagpub_graph(environ, start_response)
+
 
         qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
         hostname, start, end = _parse_qs(environ["QUERY_STRING"])
@@ -285,6 +310,7 @@ def application(environ, start_response):
             server_node_start = """<th style="width:400px"><a href="?hostname=%s">%s</a></th>""" % (server, server)
             server_node = []
             server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end))
+            server_node.append(ldr_lagpub(server_dir, server, start=start, end=end))
             server_node.append(ldrq(server_dir, server, start=start, end=end))
             server_node.append(ldr_publish(server_dir, server, start=start, end=end))
             server_node.append(ldr_rate(server_dir, server, start=start, end=end))
