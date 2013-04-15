@@ -342,7 +342,7 @@ def todo_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "count", "TODO", "avail_m_moved", logarithmic=True)
+    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "count", "Transfer todo", "avail_m_moved", logarithmic=True)
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
     return [img]
