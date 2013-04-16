@@ -168,7 +168,7 @@ def js_start(start, end):
             start += t_range;
             end += t_range;
             if( end > -1) {
-              start = - t_range * 2; 
+              start = - t_range * 2 - 1;
               end = -1;
             }
             set_t_range_interval(start, end);
