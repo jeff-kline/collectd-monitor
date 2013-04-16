@@ -24,7 +24,7 @@ try: PAGE_TITLE = config["page-title"]
 except KeyError: PAGE_TITLE = "LDR Monitor Page"
 
 try: DEFAULT_START = config["default-start"]
-except KeyError: DEFAULT_START = -86400 * 2
+except KeyError: DEFAULT_START = -86400 * 2 - 1
 
 try: DEFAULT_END = config["default-end"]
 except KeyError: DEFAULT_END = -1
