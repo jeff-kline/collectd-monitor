@@ -24,7 +24,7 @@ try: PAGE_TITLE = config["page-title"]
 except KeyError: PAGE_TITLE = "LDR Monitor Page"
 
 try: DEFAULT_START = config["default-start"]
-except KeyError: DEFAULT_START = -86400
+except KeyError: DEFAULT_START = -86400 * 2
 
 try: DEFAULT_END = config["default-end"]
 except KeyError: DEFAULT_END = -1
@@ -50,7 +50,10 @@ def html_start():
 
 def page_header():
     return """<div id="header">
-  <p><a href="" id="back">back</a> | <a href="" id="forward">forward</a> | <a href="" id="zoom_out">zoom out</a> | <a href="" id="zoom_in">zoom in</a> | <a href="" id="reset">reset</a> | <span id="t_range"></span>
+  <p><a href="" id="back" title="back"> &larr; </a> | 
+  <a href="" id="forward" title="forward"> &rarr; </a> | 
+  <a href="" id="zoom_out" title="zoom out"> &odash; </a> | 
+  <a href="" id="zoom_in" title="zoom in"> &oplus; </a> | <a href="" id="reset">reset</a> <span id="t_range"></span>
 </p>
 <p><a href="http://www.ldas-cit.ligo.caltech.edu/lag.html">Dan's Lag page</a> | <a href="%s/index.cgi">The raw data</a>
 </p>
@@ -60,11 +63,25 @@ def page_header():
 def css_start():
     return """
     <style media="screen" type="text/css">
+    a:visited {
+      color: #0000aa;
+    }
+    a:hover {
+      color: #0000ff;
+      background: #eeeeff;
+    }
+    a {
+      color: #0000aa;
+      text-decoration: none;
+    }
+    #t_range {
+      padding-left: 5em;
+    } 
     #header {
     position: relative;
     width: 96%;
     border-width: 1px;
-    border-color: #000000;
+    border-color: #eeeeee;
     border-style: solid;
     background-color: #ffffff;
     padding:0.25em;
@@ -181,7 +198,7 @@ def js_start(start, end):
           var end_d = new Date(cur_d - Math.abs(end * 1000));
           var td_obj = get_time_difference(start_d, end_d);
           var td_str = td_obj.days + "days " + td_obj.hours + "h " + td_obj.minutes + "m ";
-          $("#t_range").html(td_str + "(starting " + start_d.toString() + ")");
+          $("#t_range").html(td_str + "&mdash; starting " + start_d.toString() );
           $(".rrdtool").each(function() {
             var new_src = $(this).attr("src") + ""
             new_src = new_src.replace(/start=-\d+/, "start=" + start);
@@ -349,9 +366,9 @@ def _parse_qs(qs):
     try: hostname=qs_d["hostname"][0]
     except: hostname = None
     try: start=qs_d["start"][0]
-    except: start = '-86400'
+    except: start = "%d" % DEFAULT_START
     try: end=qs_d["end"][0]
-    except: end = '-1'
+    except: end = "%d" % DEFAULT_END
     return hostname, start, end
 
 def rate_graph(environ, start_response):
