@@ -52,6 +52,7 @@ def page_header():
     return """<div id="header">
   <p><a href="" id="back" title="back"> &larr; </a> | 
   <a href="" id="forward" title="forward"> &rarr; </a> | 
+  <a href="" id="full_forward" title="full forward"> &raquo; </a> | 
   <a href="" id="zoom_out" title="zoom out"> &odash; </a> | 
   <a href="" id="zoom_in" title="zoom in"> &oplus; </a> | <a href="" id="reset">reset</a> <span id="t_range"></span>
 </p>
@@ -162,6 +163,15 @@ def js_start(start, end):
             return false;
         });
 
+        $("#full_forward").click(function() {
+            // forward will move to the last sane value.
+            var t_range = get_sane_range(start, end);
+            start = - t_range * 2 - 1;
+            end = -1;
+            set_t_range_interval(start, end);
+            return false;
+        });
+
         $("#forward").click(function() {
             // forward will move to the last sane value.
             var t_range = get_sane_range(start, end);
@@ -260,7 +270,7 @@ def _get_recent_ldrq(server_dir, start=DEFAULT_START):
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
 
 def img(img_src, alt):
-    return """<td><img src="%s" alt="%s" class="rrdtool" style="width:100%%" ></td>""" % (img_src, alt)
+    return """<td><img src="%s" alt="%s" class="rrdtool" style="width:400px;height:220px;"></td>""" % (img_src, alt)
 
 def ldrq(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
@@ -294,7 +304,7 @@ def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
 def ldr_lagpub(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
     try:
         img_src = "lagpub_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-        if _get_recent_lagxfer(server_dir, abs(start)):
+        if _get_recent_lagpub(server_dir, abs(start)):
             return img(img_src, "publish lag for %s" % server)
     except OSError: pass
 
@@ -344,12 +354,17 @@ def ldrq_graph(environ, start_response):
         start_response(CODE_OK, response_headers)
         return [fh.read()]
 
-def _gen_graph(color_file_name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1, op=""):
+def _gen_graph(recent, name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1, op=""):
     rrdtool_args = [ '--imgformat', 'PNG', '--title', title,
                      '--start', start, '--end', end, '--vertical-label', vertical_label,]
-    if logarithmic:
-        rrdtool_args.append('--logarithmic')
 
+    if logarithmic: rrdtool_args.append('--logarithmic')
+    if not recent: 
+        # this is a blank 1x1 png
+        import base64
+        return base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=')
+    
+    color_file_name_l = zip(colorwheel(len(recent)), recent, name_l)
     with tempfile.NamedTemporaryFile() as fh:
         for c, f, n in color_file_name_l:
             rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
@@ -375,7 +390,7 @@ def rate_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_rate(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "MB/s", "Transfer rate", "MBps")
+    img = _gen_graph(recent, name_l, start, end, "MB/s", "Transfer rate", "MBps")
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
     return [img]
@@ -385,7 +400,7 @@ def todo_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "count", "Transfer todo", "avail_m_moved", logarithmic=True)
+    img = _gen_graph(recent, name_l, start, end, "count", "Transfer todo", "avail_m_moved", logarithmic=True)
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
     return [img]
@@ -395,9 +410,8 @@ def lagpub_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_lagpub(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Publish Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
+    img = _gen_graph(recent, name_l, start, end, "Hours", "Publish Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
-
     start_response(CODE_OK, response_headers)
     return [img]
 
@@ -405,7 +419,7 @@ def lagxfer_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "Hours", "Transfer Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
+    img = _gen_graph(recent, name_l, start, end, "Hours", "Transfer Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
 
     start_response(CODE_OK, response_headers)
@@ -415,7 +429,7 @@ def publish_graph(environ, start_response):
     hostname, start, end = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_publish(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
-    img = _gen_graph(zip(colorwheel(len(recent)), recent, name_l), start, end, "pub/min", "Publish rate", "pub_per_sec", scale=60)
+    img = _gen_graph(recent, name_l, start, end, "pub/min", "Publish rate", "pub_per_sec", scale=60)
     response_headers = [('Content-type', 'image/png')]
 
     start_response(CODE_OK, response_headers)
@@ -486,7 +500,6 @@ def application(environ, start_response):
     except Exception as e:
         response_headers = [('Content-type', 'text/plain')]
         start_response(CODE_ERROR, response_headers)
-        print e
         return ["Internal server error:\n  ", str(e)]
 
 if __name__=="__main__":
