@@ -1,5 +1,6 @@
 # -*- Python -*-
 # vim: set syntax=python:
+import base64
 import colorsys
 import json
 import glob
@@ -129,19 +130,14 @@ def js_start(start, end):
         var start=%d, end=%d, rrdtool_interval_handle;
         set_t_range_interval(start, end);
 
-        function get_sane_range(start, end, denom) {
-            var _denom = denom || 2;
-            return Math.max(Math.floor((end - start)/_denom), 1);
-        }
-
-        function set_t_range_interval(start, end) {
+        function set_t_range_interval(_start_, _end_) {
           // refresh each rrdtool image every 100s
           if (rrdtool_interval_handle) {
             clearInterval(rrdtool_interval_handle);
           } 
-          set_t_range(start, end);
+          set_t_range(_start_, _end_);
           rrdtool_interval_handle = setInterval(function() {
-                set_t_range(start, end);
+                set_t_range(_start_, _end_);
             }, 100000);
         };
 
@@ -156,7 +152,7 @@ def js_start(start, end):
         });
 
         $("#back").click(function() {
-            var t_range = get_sane_range(start, end);
+            var t_range = Math.floor((end - start)/2);
             start -= t_range;
             end -= t_range;
             set_t_range_interval(start, end);
@@ -165,8 +161,7 @@ def js_start(start, end):
 
         $("#full_forward").click(function() {
             // forward will move to the last sane value.
-            var t_range = get_sane_range(start, end);
-            start = - t_range * 2 - 1;
+            start = - (end - start) - 1;
             end = -1;
             set_t_range_interval(start, end);
             return false;
@@ -174,45 +169,43 @@ def js_start(start, end):
 
         $("#forward").click(function() {
             // forward will move to the last sane value.
-            var t_range = get_sane_range(start, end);
-            start += t_range;
-            end += t_range;
-            if( end > -1) {
-              start = - t_range * 2 - 1;
-              end = -1;
-            }
+            var t_range = (end - start)/2;
+            start = end >= -t_range ? -2 * t_range - 1 : Math.floor(start + t_range);
+            end = end >= -t_range ? -1: Math.floor(end + t_range);
             set_t_range_interval(start, end);
             return false;
         });
 
         $("#zoom_out").click(function() {
-            var t_range = get_sane_range(start, end);
-            start -= t_range;
-            end = Math.min(end + t_range, -1);
+            // terminal (end - start) = 4 * t_range, so it is an integer
+            // must ensure end and start are integers
+            var t_range = (end - start)/2;
+            start = end >= -t_range ? - 4 * t_range - 1 : Math.floor(start - t_range);
+            end = end >= -t_range ? -1 : Math.floor(end + t_range);
             set_t_range_interval(start, end);
             return false;
         });
 
         $("#zoom_in").click(function() {
-            var t_range = get_sane_range(start, end, 4);
-            start += t_range;
-            end -= t_range;
+            var t_range = Math.floor((end - start)/2);
+            start += Math.floor(t_range/2);
+            end = start + t_range; 
             set_t_range_interval(start, end);
             return false;
         });
 
-        function set_t_range(start, end) {
+        function set_t_range(_start_, _end_) {
           var cur_d = new Date();
           // start and end are relative to now, negative numbers
-          var start_d = new Date(cur_d - Math.abs(start * 1000));
-          var end_d = new Date(cur_d - Math.abs(end * 1000));
+          var start_d = new Date(cur_d - Math.abs(_start_ * 1000));
+          var end_d = new Date(cur_d - Math.abs(_end_ * 1000));
           var td_obj = get_time_difference(start_d, end_d);
-          var td_str = td_obj.days + "days " + td_obj.hours + "h " + td_obj.minutes + "m ";
+          var td_str = td_obj.days + "days " + td_obj.hours + "h " + td_obj.minutes + "m " + td_obj.seconds + "s ";
           $("#t_range").html(td_str + "&mdash; starting " + start_d.toString() );
           $(".rrdtool").each(function() {
             var new_src = $(this).attr("src") + ""
-            new_src = new_src.replace(/start=-\d+/, "start=" + start);
-            new_src = new_src.replace(/end=-\d+/, "end=" + end);
+            new_src = new_src.replace(/start=-\d+/, "start=" + _start_);
+            new_src = new_src.replace(/end=-\d+/, "end=" + _end_);
             new_src = new_src.replace(/;__cachebuster__=\d+/,"");
             $(this).attr("src", new_src + ";__cachebuster__=" + new Date().getTime());
           });
@@ -245,27 +238,32 @@ def _get_recent_ldrq(server_dir, start=DEFAULT_START):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
 
-def _get_recent_publish(server_dir, start=DEFAULT_START):
+def _get_recent_publish(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
-	glob.glob(os.path.join(server_dir, "ldrq/*_publish*.rrd")), start)
+                       [f for f in glob.glob(os.path.join(server_dir, "ldrq/*_publish*.rrd")) 
+                       if re.search(re.compile(ds_filter), f)], start)
 
-def _get_recent_rate(server_dir, start=DEFAULT_START):
+def _get_recent_rate(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
-	glob.glob(os.path.join(server_dir, "ldrq/*_rate*.rrd")), start)
+                       [f for f in glob.glob(os.path.join(server_dir, "ldrq/*_rate*.rrd")) 
+                       if re.search(re.compile(ds_filter), f)], start)
 
-def _get_recent_todo(server_dir, start=DEFAULT_START):
+def _get_recent_todo(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
-	glob.glob(os.path.join(server_dir, "ldrq/*_transfer*.rrd")), start)
+                       [f for f in glob.glob(os.path.join(server_dir, "ldrq/*_transfer*.rrd")) 
+                       if re.search(re.compile(ds_filter), f)], start)
 
-def _get_recent_lagxfer(server_dir, start=DEFAULT_START):
+def _get_recent_lagxfer(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
-	glob.glob(os.path.join(server_dir, "ldrq/*_lagxfer*.rrd")), start)
+                       [f for f in glob.glob(os.path.join(server_dir, "ldrq/*_lagxfer*.rrd")) 
+                       if re.search(re.compile(ds_filter), f)], start)
 
-def _get_recent_lagpub(server_dir, start=DEFAULT_START):
+def _get_recent_lagpub(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
-	glob.glob(os.path.join(server_dir, "ldrq/*_lagpub*.rrd")), start)
+                       [f for f in glob.glob(os.path.join(server_dir, "ldrq/*_lagpub*.rrd")) 
+                       if re.search(re.compile(ds_filter), f)], start)
 
-def _get_recent_ldrq(server_dir, start=DEFAULT_START):
+def _get_recent_ldrq(server_dir, start=DEFAULT_START, ds_filter=""):
     return _get_recent(server_dir, 
 	glob.glob(os.path.join(server_dir, "ldrq/ldrq.rrd")), start)
 
@@ -279,40 +277,40 @@ def ldrq(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
             return img(img_src, "ldr queue for %s" % server)
     except OSError: pass
 
-def ldr_publish(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+def ldr_publish(server_dir, server, start=DEFAULT_START, end=DEFAULT_END, ds_filter=""):
     try:
-        img_src = "publish_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-        if _get_recent_publish(server_dir, abs(start)):
+        img_src = "publish_graph?hostname=%s;start=%d;end=%d;ds_filter=%s"  % (server, start, end, ds_filter)
+        if _get_recent_publish(server_dir, abs(start), ds_filter):
             return img(img_src, "publish rate for %s" % server)
     except OSError: pass
 
 
-def ldr_rate(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+def ldr_rate(server_dir, server, start=DEFAULT_START, end=DEFAULT_END, ds_filter=""):
     try:
-       img_src = "rate_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-       if _get_recent_rate(server_dir, abs(start)):
+       img_src = "rate_graph?hostname=%s;start=%d;end=%d;ds_filter=%s"  % (server, start, end, ds_filter)
+       if _get_recent_rate(server_dir, abs(start), ds_filter):
             return img(img_src, "transfer rate for %s" % server)
     except OSError: pass
 
-def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+def ldr_todo(server_dir, server, start=DEFAULT_START, end=DEFAULT_END, ds_filter=""):
     try:
-        img_src = "todo_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-        if _get_recent_todo(server_dir, abs(start)):
+        img_src = "todo_graph?hostname=%s;start=%d;end=%d;ds_filter=%s"  % (server, start, end, ds_filter)
+        if _get_recent_todo(server_dir, abs(start), ds_filter):
             return img(img_src, "transfer todo for %s" % server)
     except OSError: pass
 
-def ldr_lagpub(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+def ldr_lagpub(server_dir, server, start=DEFAULT_START, end=DEFAULT_END, ds_filter=""):
     try:
-        img_src = "lagpub_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-        if _get_recent_lagpub(server_dir, abs(start)):
+        img_src = "lagpub_graph?hostname=%s;start=%d;end=%d;ds_filter=%s"  % (server, start, end, ds_filter)
+        if _get_recent_lagpub(server_dir, abs(start), ds_filter):
             return img(img_src, "publish lag for %s" % server)
     except OSError: pass
 
 
-def ldr_lagxfer(server_dir, server, start=DEFAULT_START, end=DEFAULT_END):
+def ldr_lagxfer(server_dir, server, start=DEFAULT_START, end=DEFAULT_END, ds_filter=""):
     try:
-        img_src = "lagxfer_graph?hostname=%s;start=%d;end=%d"  % (server, start, end)
-        if _get_recent_lagxfer(server_dir, abs(start)):
+        img_src = "lagxfer_graph?hostname=%s;start=%d;end=%d;ds_filter=%s"  % (server, start, end, ds_filter)
+        if _get_recent_lagxfer(server_dir, abs(start), ds_filter):
             return img(img_src, "transfer lag for %s" % server)
     except OSError: pass
 
@@ -326,7 +324,7 @@ def colorwheel(n):
     return [hls_to_hex((float(x)/n, 0.5, 0.625)) for x in range(n)]
 
 def ldrq_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
+    hostname, start, end, ds_filter = _parse_qs(environ["QUERY_STRING"])
     recent = _get_recent_ldrq(SERVER_d[hostname], start=abs(int(start))).pop()
     name = os.path.basename(recent).split('-')[-1].split('.')[0]
 
@@ -354,15 +352,17 @@ def ldrq_graph(environ, start_response):
         start_response(CODE_OK, response_headers)
         return [fh.read()]
 
+def _blank_png():
+    # this is a blank 1x1 png
+    return base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=')
+
 def _gen_graph(recent, name_l, start, end, vertical_label, title, ds, logarithmic=False, scale=1, op=""):
     rrdtool_args = [ '--imgformat', 'PNG', '--title', title,
                      '--start', start, '--end', end, '--vertical-label', vertical_label,]
 
     if logarithmic: rrdtool_args.append('--logarithmic')
     if not recent: 
-        # this is a blank 1x1 png
-        import base64
-        return base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAAACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=')
+        return _blank_png()
     
     color_file_name_l = zip(colorwheel(len(recent)), recent, name_l)
     with tempfile.NamedTemporaryFile() as fh:
@@ -384,12 +384,19 @@ def _parse_qs(qs):
     except: start = "%d" % DEFAULT_START
     try: end=qs_d["end"][0]
     except: end = "%d" % DEFAULT_END
-    return hostname, start, end
+    try: ds_filter=qs_d["ds_filter"][0]
+    except: ds_filter = ""
+    return hostname, start, end, ds_filter
+
+def _graph_(environ, start_response, fcn):
+    hostname, start, end, ds_filter = _parse_qs(environ["QUERY_STRING"])
+    _ds_filter = re.compile(ds_filter)
+    recent = fcn(SERVER_d[hostname], start=abs(int(start)))
+    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent if _ds_filter.search(f)]
+    return recent, name_l, start, end
 
 def rate_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
-    recent = _get_recent_rate(SERVER_d[hostname], start=abs(int(start)))
-    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    recent, name_l, start, end = _graph_(environ, start_response, _get_recent_rate)
     img = _gen_graph(recent, name_l, start, end, "MB/s", "Transfer rate", "MBps")
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
@@ -397,9 +404,7 @@ def rate_graph(environ, start_response):
 
 
 def todo_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
-    recent = _get_recent_todo(SERVER_d[hostname], start=abs(int(start)))
-    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    recent, name_l, start, end = _graph_(environ, start_response, _get_recent_todo)
     img = _gen_graph(recent, name_l, start, end, "count", "Transfer todo", "avail_m_moved", logarithmic=True)
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
@@ -407,31 +412,23 @@ def todo_graph(environ, start_response):
 
 
 def lagpub_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
-    recent = _get_recent_lagpub(SERVER_d[hostname], start=abs(int(start)))
-    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    recent, name_l, start, end = _graph_(environ, start_response, _get_recent_lagpub)
     img = _gen_graph(recent, name_l, start, end, "Hours", "Publish Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
     start_response(CODE_OK, response_headers)
     return [img]
 
 def lagxfer_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
-    recent = _get_recent_lagxfer(SERVER_d[hostname], start=abs(int(start)))
-    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    recent, name_l, start, end = _graph_(environ, start_response, _get_recent_lagxfer)
     img = _gen_graph(recent, name_l, start, end, "Hours", "Transfer Lag (modulo 7 days)", "lag", logarithmic=True, scale=1./3600., op=",168,%")
     response_headers = [('Content-type', 'image/png')]
-
     start_response(CODE_OK, response_headers)
     return [img]
 
 def publish_graph(environ, start_response):
-    hostname, start, end = _parse_qs(environ["QUERY_STRING"])
-    recent = _get_recent_publish(SERVER_d[hostname], start=abs(int(start)))
-    name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent]
+    recent, name_l, start, end = _graph_(environ, start_response, _get_recent_publish)
     img = _gen_graph(recent, name_l, start, end, "pub/min", "Publish rate", "pub_per_sec", scale=60)
     response_headers = [('Content-type', 'image/png')]
-
     start_response(CODE_OK, response_headers)
     return [img]
 
@@ -456,7 +453,7 @@ def application(environ, start_response):
 
 
         qs_d = urlparse.parse_qs(environ["QUERY_STRING"])
-        hostname, start, end = _parse_qs(environ["QUERY_STRING"])
+        hostname, start, end, ds_filter = _parse_qs(environ["QUERY_STRING"])
         start, end =int(start), int(end)
 
         ret = [html_start(), css_start(), js_start(start, end), page_header()]
@@ -466,14 +463,14 @@ def application(environ, start_response):
         for server, server_dir in SERVER_d.iteritems():
             if hostname is not None and not re.search(hostname, server):
                 continue
-            server_node_start = """<th style="width:400px"><a href="?hostname=%s">%s</a></th>""" % (server, server)
+            server_node_start = """<th style="width:400px"><a href="?hostname=%s;ds_filter=%s">%s</a></th>""" % (server, ds_filter, server)
             server_node = []
-            server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end))
-            server_node.append(ldr_lagpub(server_dir, server, start=start, end=end))
+            server_node.append(ldr_lagxfer(server_dir, server, start=start, end=end, ds_filter=ds_filter))
+            server_node.append(ldr_lagpub(server_dir, server, start=start, end=end, ds_filter=ds_filter))
             server_node.append(ldrq(server_dir, server, start=start, end=end))
-            server_node.append(ldr_publish(server_dir, server, start=start, end=end))
-            server_node.append(ldr_rate(server_dir, server, start=start, end=end))
-            server_node.append(ldr_todo(server_dir, server, start=start, end=end))
+            server_node.append(ldr_publish(server_dir, server, start=start, end=end, ds_filter=ds_filter))
+            server_node.append(ldr_rate(server_dir, server, start=start, end=end, ds_filter=ds_filter))
+            server_node.append(ldr_todo(server_dir, server, start=start, end=end, ds_filter=ds_filter))
 
             # only add nodes if server_node is not null
             if any(server_node):
