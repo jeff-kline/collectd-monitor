@@ -393,6 +393,7 @@ def _graph_(environ, start_response, fcn):
     _ds_filter = re.compile(ds_filter)
     recent = fcn(SERVER_d[hostname], start=abs(int(start)))
     name_l = [os.path.basename(f).split('-')[-1].split('.')[0] for f in recent if _ds_filter.search(f)]
+    recent = [f for f in recent if _ds_filter.search(f)]
     return recent, name_l, start, end
 
 def rate_graph(environ, start_response):
