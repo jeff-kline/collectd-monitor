@@ -39,8 +39,7 @@ SERVER_d = dict(zip(SERVER_l, SERVER_DIR_l))
 
 def html_start():
     return """
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
-   "http://www.w3.org/TR/html4/strict.dtd">
+<!DOCTYPE html>
 <html>
   <head>
   <meta http-equiv="Content-Type" content="text/html;charset=utf-8" >
@@ -64,7 +63,7 @@ def page_header():
 
 def css_start():
     return """
-    <style media="screen" type="text/css">
+    <style media="screen" type="text/css" scoped>
     a:visited {
       color: #0000aa;
     }
@@ -217,8 +216,8 @@ def js_start(start, end):
 def w3c_pride():
     return """
   <p>
-    <a href="http://validator.w3.org/check?uri=referer"><img
-      src="http://www.w3.org/Icons/valid-html401" alt="Valid HTML 4.01 Strict" height="31" width="88"></a>
+    <a href="http://validator.w3.org/check?uri=https%3A%2F%2Fnemo-dataserver2.phys.uwm.edu%2Fcollectd-monitor%2F"><img
+      src="http://www.w3.org/html/logo/downloads/HTML5_Logo_32.png" alt="Valid HTML 5"></a>
   </p>"""
 
 def html_end():
