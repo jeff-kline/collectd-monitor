@@ -366,9 +366,10 @@ def _gen_graph(recent, name_l, start, end, vertical_label, title, ds, logarithmi
     color_file_name_l = zip(colorwheel(len(recent)), recent, name_l)
     with tempfile.NamedTemporaryFile() as fh:
         for c, f, n in color_file_name_l:
+            pretty_name = n.replace("_to_", "/")
             rrdtool_args.append('DEF:%s0=%s:%s:AVERAGE' % (n, f, ds))
             rrdtool_args.append('CDEF:%s=%s0,%f,*%s' % (n, n, scale, op))
-            rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), n[-25:]))
+            rrdtool_args.append('LINE:%s#%s:%25s' % (n,''.join(c), pretty_name[-25:]))
             rrdtool_args.append('GPRINT:%s:AVERAGE:avg\: %%8.2lf' % (n))
             rrdtool_args.append('GPRINT:%s:MAX:max\: %%5.0lf' % (n))
             rrdtool_args.append('GPRINT:%s:LAST:last\: %%5.0lf\\n' % (n))
